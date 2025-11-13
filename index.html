@@ -1,34 +1,27 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Cabrillo Clicker</title>
-    <style>
-        body { 
-            font-family: Arial; 
-            text-align: center; 
-            margin-top: 50px; 
-        }
-        #btn {
-            font-size: 24px;
-            padding: 15px 30px;
-            margin-top: 20px;
-        }
-    </style>
+  <title>Cabrillo College Clicker</title>
+  <style>
+    body { font-family: Arial; text-align: center; margin-top: 50px; }
+    #count { font-size: 40px; margin: 20px; }
+    button { font-size: 24px; padding: 10px 20px; }
+  </style>
 </head>
 <body>
+  <h1>Cabrillo College</h1>
+  <h2>Click the Button!</h2>
 
-    <h1>Cabrillo College Clicker Game</h1>
-    <h2>Score: <span id="score">0</span></h2>
+  <div id="count">0</div>
 
-    <button id="btn">Click Me!</button>
+  <button onclick="add()">Click Me</button>
 
-    <script>
-        let score = 0;
-        document.getElementById("btn").onclick = function () {
-            score++;
-            document.getElementById("score").textContent = score;
-        };
-    </script>
-
+  <script>
+    let count = 0;
+    function add() {
+      count++;
+      document.getElementById("count").textContent = count;
+    }
+  </script>
 </body>
 </html>
