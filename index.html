@@ -1,27 +1,387 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <title>Cabrillo College Clicker</title>
-  <style>
-    body { font-family: Arial; text-align: center; margin-top: 50px; }
-    #count { font-size: 40px; margin: 20px; }
-    button { font-size: 24px; padding: 10px 20px; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Cabrillo College — Memory Match Game</title>
+<style>
+  /* ====== Visual theme ====== */
+  :root{
+    --bg:#071025;
+    --panel:#0f1724;
+    --accent:#ff7a59;
+    --muted:#9fb2c9;
+    --card:#0b2030;
+    --card-back:#0b2b3f;
+    --text:#eaf2ff;
+    --glass: rgba(255,255,255,0.03);
+    --success:#7be495;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:
+    radial-gradient(1200px 600px at 10% 10%, rgba(7,18,37,0.6), transparent),
+    linear-gradient(180deg,#061022 0%, #071426 100%);color:var(--text);-webkit-font-smoothing:antialiased}
+  .app{
+    max-width:980px;margin:28px auto;padding:18px;border-radius:14px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));box-shadow:0 12px 40px rgba(2,6,23,0.6)
+  }
+  header{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .badge{background:var(--accent);color:#111;padding:8px 12px;border-radius:8px;font-weight:800}
+  h1{margin:0;font-size:18px;letter-spacing:0.2px}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}
+  @media(max-width:880px){.layout{grid-template-columns:1fr;}}
+  /* panel */
+  .panel{background:var(--glass);padding:12px;border-radius:10px}
+  .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  button{cursor:pointer;border-radius:8px;padding:8px 10px;border:2px solid rgba(255,255,255,0.06);background:transparent;color:var(--text);font-weight:700}
+  button.primary{background:var(--accent);color:#111;border-color:transparent}
+  button.ghost{background:transparent;border:2px dashed rgba(255,255,255,0.04);color:var(--muted);font-weight:600}
+  .stats{display:grid;gap:6px;margin-top:10px}
+  .row{display:flex;justify-content:space-between;align-items:center;font-weight:700}
+  .small{font-size:13px;color:var(--muted);margin-top:8px}
+  /* board */
+  .board-wrap{padding:12px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00));border-radius:10px}
+  .board{display:grid;gap:10px;justify-content:center}
+  /* dynamic grid (4 columns default) */
+  .board.grid-4{grid-template-columns:repeat(4, minmax(64px, 1fr));}
+  @media (min-width:720px){ .board.grid-4{grid-auto-rows:100px} }
+  .card{
+    position:relative;perspective:700px;
+  }
+  .card-inner{position:relative;width:100%;height:100%;transform-style:preserve-3d;transition:transform .4s cubic-bezier(.2,.9,.3,1)}
+  .card.flipped .card-inner{transform:rotateY(180deg)}
+  .face{position:absolute;inset:0;border-radius:8px;display:flex;align-items:center;justify-content:center;backface-visibility:hidden}
+  .face.front{background:linear-gradient(180deg,var(--card),#063142);transform:rotateY(180deg);box-shadow:inset 0 2px 6px rgba(255,255,255,0.02)}
+  .face.back{background:linear-gradient(180deg,var(--card-back),#053046);border:1px solid rgba(255,255,255,0.02);font-weight:900}
+  .emoji{font-size:28px}
+  .matched .card-inner{box-shadow:0 6px 24px rgba(7,200,120,0.06);outline:3px solid rgba(123,228,149,0.06)}
+  footer{margin-top:12px;text-align:center;color:var(--muted);font-size:13px}
+  /* focus styles for accessibility */
+  .card:focus{outline:3px solid rgba(255,255,255,0.06);outline-offset:2px}
+  .sr-only{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
+</style>
 </head>
 <body>
-  <h1>Cabrillo College</h1>
-  <h2>Click the Button!</h2>
+  <div class="app" role="application" aria-label="Cabrillo College Memory Match">
+    <header>
+      <div class="badge">Cabrillo College</div>
+      <h1>Memory Match — find all the pairs!</h1>
+    </header>
 
-  <div id="count">0</div>
+    <div class="layout">
+      <!-- Game Board -->
+      <section class="board-wrap panel" aria-live="polite">
+        <div id="board" class="board grid-4" role="grid" aria-label="Game board"></div>
+        <div class="small">Tip: Use keyboard (Tab + Enter/Space) to flip cards. Try to finish with few attempts.</div>
+      </section>
 
-  <button onclick="add()">Click Me</button>
+      <!-- Controls & Stats -->
+      <aside class="panel" aria-label="Game controls and stats">
+        <div class="controls">
+          <button id="shuffle" class="ghost" title="Shuffle board (restart)">Shuffle / Restart</button>
+          <button id="hint">Reveal 1 pair (hint)</button>
+          <button id="auto" class="ghost">Auto Solve</button>
+          <button id="sound" aria-pressed="false">Sound: On</button>
+        </div>
 
-  <script>
-    let count = 0;
-    function add() {
-      count++;
-      document.getElementById("count").textContent = count;
+        <div class="stats" id="stats" aria-live="polite">
+          <div class="row"><span>Matches</span><span id="matches">0</span></div>
+          <div class="row"><span>Attempts</span><span id="attempts">0</span></div>
+          <div class="row"><span>Accuracy</span><span id="accuracy">0%</span></div>
+          <div class="row"><span>Time</span><span id="time">0s</span></div>
+        </div>
+
+        <div style="margin-top:10px">
+          <label for="size" class="small">Grid size</label>
+          <select id="size" style="width:100%;margin-top:6px;padding:8px;border-radius:8px;background:transparent;color:var(--text)">
+            <option value="4">4×4 (16 cards)</option>
+            <option value="6">6×6 (36 cards)</option>
+          </select>
+        </div>
+
+        <div style="margin-top:12px">
+          <button id="start" class="primary" style="width:100%">Start / Resume</button>
+        </div>
+
+        <div class="small" style="margin-top:12px">
+          <strong>Shareable summary</strong>
+          <div id="summary" style="margin-top:8px;background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;font-size:13px;color:var(--muted)">Play to generate summary</div>
+        </div>
+      </aside>
+    </div>
+
+    <footer>Made for class — displays "Cabrillo College". Good luck!</footer>
+  </div>
+
+<script>
+/* Memory Match Game - single file
+   - Shows "Cabrillo College" in UI
+   - Accessible: keyboard support + ARIA
+   - Controls: shuffle, hint, auto-solve, sound toggle, grid size
+   - Well-commented for screenshots / assignment
+*/
+
+/* ====== Config & state ====== */
+const boardEl = document.getElementById('board');
+const matchesEl = document.getElementById('matches');
+const attemptsEl = document.getElementById('attempts');
+const accuracyEl = document.getElementById('accuracy');
+const timeEl = document.getElementById('time');
+const summaryEl = document.getElementById('summary');
+const sizeSelect = document.getElementById('size');
+const shuffleBtn = document.getElementById('shuffle');
+const hintBtn = document.getElementById('hint');
+const autoBtn = document.getElementById('auto');
+const soundBtn = document.getElementById('sound');
+const startBtn = document.getElementById('start');
+
+let gridCols = 4;           // default 4x4
+let cardCount = 16;         // derived from gridCols * gridCols
+let icons = [];             // icons used on card faces
+let deck = [];              // cards array {id, icon, matched, flipped, index}
+let first = null, second = null;
+let attempts = 0, matches = 0;
+let timer = null, elapsed = 0;
+let running = false;
+let revealLock = false;     // prevent clicks during animations
+let soundOn = true;
+
+/* Simple sounds (optional) */
+const beep = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBIAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA='); // tiny silent wav fallback
+
+/* ====== Helpers ====== */
+function range(n){ return [...Array(n).keys()]; }
+function shuffleArray(a){
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+function makeIcons(pairCount){
+  // A list of emoji that are distinct enough for matching.
+  const pool = ['🐙','🍉','🚀','🌟','🦊','🍩','🎧','🏝️','🦉','🎈','🍕','⚽','🐢','🎲','🌵','🐼','🍓','🔔','🧩','🌈','🍪','🐝','🚲','🪁','🕹️','🌙','🍔','🐸','🧸','🎵','🎯','🍦','🪴','🛶','🦄','🧊','🏀','🥐'];
+  return shuffleArray(pool).slice(0,pairCount);
+}
+
+/* ====== Build deck ====== */
+function buildDeck(){
+  gridCols = parseInt(sizeSelect.value,10);
+  cardCount = gridCols * gridCols;
+  const pairCount = Math.floor(cardCount/2);
+  icons = makeIcons(pairCount);
+  // create pairs and assign ids
+  deck = [];
+  icons.forEach((icon,i)=>{
+    deck.push({id:i*2, icon, matched:false, flipped:false});
+    deck.push({id:i*2+1, icon, matched:false, flipped:false});
+  });
+  // if odd (shouldn't happen here) add one dummy pair
+  shuffleArray(deck);
+}
+
+/* ====== Render board ====== */
+function renderBoard(){
+  boardEl.innerHTML = '';
+  boardEl.className = 'board grid-4';
+  // tweak CSS grid class for larger boards (keeps responsive)
+  if(gridCols === 6) {
+    boardEl.style.gridTemplateColumns = `repeat(6, minmax(48px, 1fr))`;
+  } else {
+    boardEl.style.gridTemplateColumns = `repeat(${gridCols}, minmax(64px, 1fr))`;
+  }
+  deck.forEach((card,idx)=>{
+    const btn = document.createElement('button');
+    btn.className = 'card';
+    btn.setAttribute('role','gridcell');
+    btn.setAttribute('aria-label','memory card');
+    btn.setAttribute('tabindex','0');
+    btn.dataset.index = idx;
+    if(card.matched) btn.classList.add('matched');
+    if(card.flipped) btn.classList.add('flipped');
+    // inner structure for flip effect
+    btn.innerHTML = `
+      <div class="card-inner" aria-hidden="${!card.flipped}">
+        <div class="face back"><span class="emoji">❓</span></div>
+        <div class="face front"><span class="emoji">${card.icon}</span></div>
+      </div>
+    `;
+    // click / keyboard handlers
+    btn.addEventListener('click', ()=>onCardClick(idx, btn));
+    btn.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCardClick(idx, btn); }
+    });
+    boardEl.appendChild(btn);
+  });
+}
+
+/* ====== Game mechanics ====== */
+function onCardClick(index, btn){
+  if(revealLock) return;
+  const card = deck[index];
+  if(card.matched || card.flipped) return;
+  // Flip visual
+  card.flipped = true;
+  btn.classList.add('flipped');
+  playSound();
+  if(!first){
+    first = {card,index,btn};
+    if(!running) startTimer();
+    return;
+  }
+  if(first && !second){
+    second = {card,index,btn};
+    attempts++;
+    updateStats();
+    // disable further input briefly
+    revealLock = true;
+    // check match
+    if(first.card.icon === second.card.icon){
+      // matched
+      setTimeout(()=>{
+        deck[first.index].matched = deck[second.index].matched = true;
+        deck[first.index].flipped = deck[second.index].flipped = true;
+        document.querySelectorAll('.card')[first.index].classList.add('matched');
+        document.querySelectorAll('.card')[second.index].classList.add('matched');
+        matches++;
+        resetPick();
+        revealLock = false;
+        updateStats();
+        checkWin();
+      }, 450);
+    } else {
+      // no match - flip back
+      setTimeout(()=>{
+        deck[first.index].flipped = deck[second.index].flipped = false;
+        document.querySelectorAll('.card')[first.index].classList.remove('flipped');
+        document.querySelectorAll('.card')[second.index].classList.remove('flipped');
+        resetPick();
+        revealLock = false;
+        updateStats();
+      }, 900);
     }
-  </script>
+  }
+}
+
+function resetPick(){ first = null; second = null; }
+
+function updateStats(){
+  matchesEl.textContent = matches;
+  attemptsEl.textContent = attempts;
+  const acc = attempts ? Math.round((matches*2)/(attempts*2) * 100) : 0;
+  accuracyEl.textContent = acc + '%';
+  timeEl.textContent = `${elapsed}s`;
+  summaryEl.textContent = `Matches: ${matches} / ${deck.length/2} • Attempts: ${attempts} • Time: ${elapsed}s • Accuracy: ${acc}%`;
+}
+
+/* ====== Timer ====== */
+function startTimer(){
+  if(running) return;
+  running = true;
+  timer = setInterval(()=>{ elapsed++; timeEl.textContent = `${elapsed}s`; updateStats(); }, 1000);
+}
+function stopTimer(){
+  running = false;
+  clearInterval(timer);
+}
+
+/* ====== Controls ====== */
+shuffleBtn.addEventListener('click', startNewGame);
+sizeSelect.addEventListener('change', startNewGame);
+startBtn.addEventListener('click', ()=>{ if(!running) startTimer(); else { stopTimer(); startTimer(); } });
+hintBtn.addEventListener('click', revealHint);
+autoBtn.addEventListener('click', autoSolve);
+soundBtn.addEventListener('click', ()=>{
+  soundOn = !soundOn;
+  soundBtn.textContent = soundOn ? 'Sound: On' : 'Sound: Off';
+  soundBtn.setAttribute('aria-pressed', String(!soundOn));
+});
+
+/* ====== Hint (reveal one unmatched pair briefly) ====== */
+function revealHint(){
+  if(revealLock) return;
+  // find an unmatched pair
+  const pairs = {};
+  deck.forEach((c,i)=>{ if(!c.matched) { pairs[c.icon] = pairs[c.icon] || []; pairs[c.icon].push(i); }});
+  const candidate = Object.values(pairs).find(arr=>arr.length === 2);
+  if(!candidate){
+    // no available pair
+    return;
+  }
+  revealLock = true;
+  const [a,b] = candidate;
+  deck[a].flipped = deck[b].flipped = true;
+  renderBoard();
+  setTimeout(()=>{ deck[a].flipped = deck[b].flipped = false; renderBoard(); revealLock = false; }, 900);
+}
+
+/* ====== Auto-solve (for demo / submission) ====== */
+function autoSolve(){
+  // reveal all progressively and mark matched
+  revealLock = true;
+  const order = [...range(deck.length)];
+  let i = 0;
+  const step = () => {
+    if(i >= order.length){
+      revealLock = false; updateStats(); return;
+    }
+    const idx = order[i++];
+    const card = deck[idx];
+    if(!card.matched){
+      card.flipped = true;
+      renderBoard();
+      // find its pair
+      const pairIdx = deck.findIndex((c,j)=> j!==idx && c.icon === card.icon);
+      // mark matched after short pause
+      setTimeout(()=>{
+        deck[idx].matched = deck[pairIdx].matched = true;
+        deck[idx].flipped = deck[pairIdx].flipped = true;
+        renderBoard();
+        updateStats();
+        setTimeout(step, 200);
+      }, 300);
+    } else {
+      setTimeout(step, 50);
+    }
+  };
+  step();
+}
+
+/* ====== Sound ====== */
+function playSound(){ if(soundOn) try{ beep.currentTime = 0; beep.play(); }catch(e){} }
+
+/* ====== Win check ====== */
+function checkWin(){
+  if(matches === deck.length/2){
+    stopTimer();
+    setTimeout(()=>{ alert(`You matched all pairs! Attempts: ${attempts}, Time: ${elapsed}s`); }, 250);
+  }
+}
+
+/* ====== Start / Restart flow ====== */
+function startNewGame(){
+  stopTimer();
+  elapsed = 0; attempts = 0; matches = 0; first = second = null; revealLock = false;
+  buildDeck();
+  shuffleArray(deck);
+  renderBoard();
+  updateStats();
+  // ensure board receives focus for keyboard
+  setTimeout(()=>{ boardEl.querySelector('.card')?.focus(); }, 60);
+}
+
+/* initialize */
+startNewGame();
+
+/* ====== Accessibility: keyboard shortcuts ====== */
+document.addEventListener('keydown', (e)=>{
+  if(e.key === 'h') revealHint();
+  if(e.key === 's') autoSolve();
+  if(e.key === 'r') startNewGame();
+  // numbers 1/2 toggle grid size quickly (optional)
+  if(e.key === '1'){ sizeSelect.value = '4'; startNewGame(); }
+  if(e.key === '2'){ sizeSelect.value = '6'; startNewGame(); }
+});
+</script>
 </body>
 </html>
